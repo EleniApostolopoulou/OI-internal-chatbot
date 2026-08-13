@@ -280,11 +280,15 @@ def prepare_model_args(request_body, request_headers):
         application_name = app_settings.ui.title
         user_security_context = get_msdefender_user_json(authenticated_user_details, request_headers, application_name )  # security component introduced here https://learn.microsoft.com/en-us/azure/defender-for-cloud/gain-end-user-context-ai
     
+    # Newer models (gpt-4o, o1, etc.) require max_completion_tokens instead of max_tokens
+    model_name = app_settings.azure_openai.model.lower()
+    use_new_token_param = any(x in model_name for x in ['gpt-4o', 'o1', 'o3', 'gpt-4.1'])
+    token_param_name = "max_completion_tokens" if use_new_token_param else "max_tokens"
 
     model_args = {
         "messages": messages,
         "temperature": app_settings.azure_openai.temperature,
-        "max_completion_tokens": app_settings.azure_openai.max_tokens,
+        token_param_name: app_settings.azure_openai.max_tokens,
         "top_p": app_settings.azure_openai.top_p,
         "stop": app_settings.azure_openai.stop_sequence,
         "stream": app_settings.azure_openai.stream,
@@ -1049,9 +1053,21 @@ async def generate_title(conversation_messages) -> str:
 
     try:
         azure_openai_client = await init_openai_client()
-        response = await azure_openai_client.chat.completions.create(
-            model=app_settings.azure_openai.model, messages=messages, temperature=1, max_completion_tokens=64
-        )
+        # Newer models (gpt-4o, o1, etc.) require max_completion_tokens instead of max_tokens
+        model_name = app_settings.azure_openai.model.lower()
+        use_new_token_param = any(x in model_name for x in ['gpt-4o', 'o1', 'o3', 'gpt-4.1'])
+        
+        create_args = {
+            "model": app_settings.azure_openai.model,
+            "messages": messages,
+            "temperature": 1
+        }
+        if use_new_token_param:
+            create_args["max_completion_tokens"] = 64
+        else:
+            create_args["max_tokens"] = 64
+            
+        response = await azure_openai_client.chat.completions.create(**create_args)
 
         title = response.choices[0].message.content
         return title
