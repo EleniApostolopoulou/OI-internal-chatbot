@@ -280,10 +280,11 @@ def prepare_model_args(request_body, request_headers):
         application_name = app_settings.ui.title
         user_security_context = get_msdefender_user_json(authenticated_user_details, request_headers, application_name )  # security component introduced here https://learn.microsoft.com/en-us/azure/defender-for-cloud/gain-end-user-context-ai
     
-    # Newer models (gpt-4o, o1, etc.) require max_completion_tokens instead of max_tokens
+    # Most Azure OpenAI models now require max_completion_tokens instead of max_tokens
+    # Only legacy models (gpt-35-turbo, gpt-4-turbo, etc.) still use max_tokens
     model_name = app_settings.azure_openai.model.lower()
-    use_new_token_param = any(x in model_name for x in ['gpt-4o', 'o1', 'o3', 'gpt-4.1'])
-    token_param_name = "max_completion_tokens" if use_new_token_param else "max_tokens"
+    use_legacy_token_param = any(x in model_name for x in ['gpt-35', 'gpt-3.5', 'gpt-4-turbo', 'gpt-4-32k'])
+    token_param_name = "max_tokens" if use_legacy_token_param else "max_completion_tokens"
 
     model_args = {
         "messages": messages,
@@ -1053,19 +1054,20 @@ async def generate_title(conversation_messages) -> str:
 
     try:
         azure_openai_client = await init_openai_client()
-        # Newer models (gpt-4o, o1, etc.) require max_completion_tokens instead of max_tokens
+        # Most Azure OpenAI models now require max_completion_tokens instead of max_tokens
+        # Only legacy models (gpt-35-turbo, gpt-4-turbo, etc.) still use max_tokens
         model_name = app_settings.azure_openai.model.lower()
-        use_new_token_param = any(x in model_name for x in ['gpt-4o', 'o1', 'o3', 'gpt-4.1'])
+        use_legacy_token_param = any(x in model_name for x in ['gpt-35', 'gpt-3.5', 'gpt-4-turbo', 'gpt-4-32k'])
         
         create_args = {
             "model": app_settings.azure_openai.model,
             "messages": messages,
             "temperature": 1
         }
-        if use_new_token_param:
-            create_args["max_completion_tokens"] = 64
-        else:
+        if use_legacy_token_param:
             create_args["max_tokens"] = 64
+        else:
+            create_args["max_completion_tokens"] = 64
             
         response = await azure_openai_client.chat.completions.create(**create_args)
 
